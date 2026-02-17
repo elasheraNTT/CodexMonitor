@@ -47,6 +47,8 @@ pub(crate) async fn update_app_settings_core(
     app_settings: &Mutex<AppSettings>,
     settings_path: &PathBuf,
 ) -> Result<AppSettings, String> {
+    let previous = app_settings.lock().await.clone();
+    apply_default_codex_home_env(&settings, Some(&previous));
     let _ = codex_config::write_collab_enabled(settings.experimental_collab_enabled);
     let _ = codex_config::write_collaboration_modes_enabled(settings.collaboration_modes_enabled);
     let _ = codex_config::write_steer_enabled(settings.steer_enabled);
@@ -57,6 +59,30 @@ pub(crate) async fn update_app_settings_core(
     let mut current = app_settings.lock().await;
     *current = settings.clone();
     Ok(settings)
+}
+
+pub(crate) fn apply_default_codex_home_env(
+    settings: &AppSettings,
+    previous: Option<&AppSettings>,
+) {
+    let next = settings
+        .default_codex_home
+        .as_ref()
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+    if let Some(next) = next {
+        std::env::set_var("CODEX_HOME", next);
+        return;
+    }
+
+    let should_clear = previous
+        .and_then(|prior| prior.default_codex_home.as_ref())
+        .map(|value| value.trim())
+        .is_some_and(|value| !value.is_empty());
+    if should_clear {
+        std::env::remove_var("CODEX_HOME");
+    }
 }
 
 pub(crate) async fn update_remote_backend_token_core(

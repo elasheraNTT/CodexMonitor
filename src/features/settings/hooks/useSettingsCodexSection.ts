@@ -45,6 +45,7 @@ export type SettingsCodexSectionProps = {
   onRefreshDefaultModels: () => void;
   codexPathDraft: string;
   codexArgsDraft: string;
+  codexHomeDraft: string;
   codexDirty: boolean;
   isSavingSettings: boolean;
   doctorState: {
@@ -75,6 +76,7 @@ export type SettingsCodexSectionProps = {
   codexArgsOverrideDrafts: Record<string, string>;
   onSetCodexPathDraft: Dispatch<SetStateAction<string>>;
   onSetCodexArgsDraft: Dispatch<SetStateAction<string>>;
+  onSetCodexHomeDraft: Dispatch<SetStateAction<string>>;
   onSetGlobalAgentsContent: (value: string) => void;
   onSetGlobalConfigContent: (value: string) => void;
   onSetCodexBinOverrideDrafts: Dispatch<SetStateAction<Record<string, string>>>;
@@ -106,6 +108,7 @@ export const useSettingsCodexSection = ({
 }: UseSettingsCodexSectionArgs): SettingsCodexSectionProps => {
   const [codexPathDraft, setCodexPathDraft] = useState(appSettings.codexBin ?? "");
   const [codexArgsDraft, setCodexArgsDraft] = useState(appSettings.codexArgs ?? "");
+  const [codexHomeDraft, setCodexHomeDraft] = useState(appSettings.defaultCodexHome ?? "");
   const [codexBinOverrideDrafts, setCodexBinOverrideDrafts] = useState<
     Record<string, string>
   >({});
@@ -184,6 +187,10 @@ export const useSettingsCodexSection = ({
   }, [appSettings.codexArgs]);
 
   useEffect(() => {
+    setCodexHomeDraft(appSettings.defaultCodexHome ?? "");
+  }, [appSettings.defaultCodexHome]);
+
+  useEffect(() => {
     setCodexBinOverrideDrafts((prev) =>
       buildWorkspaceOverrideDrafts(projects, prev, (workspace) => workspace.codex_bin ?? null),
     );
@@ -205,9 +212,11 @@ export const useSettingsCodexSection = ({
 
   const nextCodexBin = codexPathDraft.trim() ? codexPathDraft.trim() : null;
   const nextCodexArgs = codexArgsDraft.trim() ? codexArgsDraft.trim() : null;
+  const nextDefaultCodexHome = codexHomeDraft.trim() ? codexHomeDraft.trim() : null;
   const codexDirty =
     nextCodexBin !== (appSettings.codexBin ?? null) ||
-    nextCodexArgs !== (appSettings.codexArgs ?? null);
+    nextCodexArgs !== (appSettings.codexArgs ?? null) ||
+    nextDefaultCodexHome !== (appSettings.defaultCodexHome ?? null);
 
   const handleBrowseCodex = async () => {
     const selection = await open({ multiple: false, directory: false });
@@ -224,6 +233,7 @@ export const useSettingsCodexSection = ({
         ...appSettings,
         codexBin: nextCodexBin,
         codexArgs: nextCodexArgs,
+        defaultCodexHome: nextDefaultCodexHome,
       });
     } finally {
       setIsSavingSettings(false);
@@ -304,6 +314,7 @@ export const useSettingsCodexSection = ({
     },
     codexPathDraft,
     codexArgsDraft,
+    codexHomeDraft,
     codexDirty,
     isSavingSettings,
     doctorState,
@@ -328,6 +339,7 @@ export const useSettingsCodexSection = ({
     codexArgsOverrideDrafts,
     onSetCodexPathDraft: setCodexPathDraft,
     onSetCodexArgsDraft: setCodexArgsDraft,
+    onSetCodexHomeDraft: setCodexHomeDraft,
     onSetGlobalAgentsContent: setGlobalAgentsContent,
     onSetGlobalConfigContent: setGlobalConfigContent,
     onSetCodexBinOverrideDrafts: setCodexBinOverrideDrafts,

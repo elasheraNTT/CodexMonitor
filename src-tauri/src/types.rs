@@ -445,6 +445,8 @@ pub(crate) struct AppSettings {
     pub(crate) codex_bin: Option<String>,
     #[serde(default, rename = "codexArgs")]
     pub(crate) codex_args: Option<String>,
+    #[serde(default, rename = "defaultCodexHome")]
+    pub(crate) default_codex_home: Option<String>,
     #[serde(default, rename = "backendMode")]
     pub(crate) backend_mode: BackendMode,
     #[serde(default, rename = "remoteBackendProvider")]
@@ -1150,6 +1152,7 @@ impl Default for AppSettings {
         Self {
             codex_bin: None,
             codex_args: None,
+            default_codex_home: None,
             backend_mode: default_backend_mode(),
             remote_backend_provider: RemoteBackendProvider::Tcp,
             remote_backend_host: default_remote_backend_host(),

@@ -79,6 +79,7 @@ impl AppState {
         let settings_path = data_dir.join("settings.json");
         let workspaces = read_workspaces(&storage_path).unwrap_or_default();
         let app_settings = read_settings(&settings_path).unwrap_or_default();
+        crate::shared::settings_core::apply_default_codex_home_env(&app_settings, None);
         Self {
             workspaces: Mutex::new(workspaces),
             sessions: Mutex::new(HashMap::new()),

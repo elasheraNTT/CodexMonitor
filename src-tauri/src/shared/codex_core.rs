@@ -108,7 +108,7 @@ pub(crate) async fn list_threads_core(
         "sortKey": sort_key,
         // Keep spawned sub-agent sessions visible in thread/list so UI refreshes
         // do not drop parent -> child sidebar relationships.
-        "sourceKinds": ["cli", "vscode", "subAgentThreadSpawn"]
+        "sourceKinds": ["cli", "vscode", "jetbrains", "subAgentThreadSpawn"]
     });
     session.send_request("thread/list", params).await
 }

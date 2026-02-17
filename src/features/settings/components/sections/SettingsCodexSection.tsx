@@ -20,6 +20,7 @@ type SettingsCodexSectionProps = {
   onRefreshDefaultModels: () => void;
   codexPathDraft: string;
   codexArgsDraft: string;
+  codexHomeDraft: string;
   codexDirty: boolean;
   isSavingSettings: boolean;
   doctorState: {
@@ -50,6 +51,7 @@ type SettingsCodexSectionProps = {
   codexArgsOverrideDrafts: Record<string, string>;
   onSetCodexPathDraft: Dispatch<SetStateAction<string>>;
   onSetCodexArgsDraft: Dispatch<SetStateAction<string>>;
+  onSetCodexHomeDraft: Dispatch<SetStateAction<string>>;
   onSetGlobalAgentsContent: (value: string) => void;
   onSetGlobalConfigContent: (value: string) => void;
   onSetCodexBinOverrideDrafts: Dispatch<SetStateAction<Record<string, string>>>;
@@ -129,6 +131,7 @@ export function SettingsCodexSection({
   onRefreshDefaultModels,
   codexPathDraft,
   codexArgsDraft,
+  codexHomeDraft,
   codexDirty,
   isSavingSettings,
   doctorState,
@@ -153,6 +156,7 @@ export function SettingsCodexSection({
   codexArgsOverrideDrafts,
   onSetCodexPathDraft,
   onSetCodexArgsDraft,
+  onSetCodexHomeDraft,
   onSetGlobalAgentsContent,
   onSetGlobalConfigContent,
   onSetCodexBinOverrideDrafts,
@@ -286,6 +290,30 @@ export function SettingsCodexSection({
           </button>
         </div>
         <div className="settings-help">Leave empty to use the system PATH resolution.</div>
+        <label className="settings-field-label" htmlFor="codex-home">
+          Default CODEX_HOME
+        </label>
+        <div className="settings-field-row">
+          <input
+            id="codex-home"
+            className="settings-input"
+            value={codexHomeDraft}
+            placeholder="%LOCALAPPDATA%\\JetBrains\\IntelliJIdea2025.3\\aia\\codex"
+            onChange={(event) => onSetCodexHomeDraft(event.target.value)}
+          />
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => onSetCodexHomeDraft("")}
+          >
+            Clear
+          </button>
+        </div>
+        <div className="settings-help">
+          Optional default for session discovery. Useful for IntelliJ Codex threads when they live
+          outside <code>~/.codex</code>. Workspace <code>CODEX_HOME</code> overrides still take
+          priority.
+        </div>
         <label className="settings-field-label" htmlFor="codex-args">
           Default Codex args
         </label>

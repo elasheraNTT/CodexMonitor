@@ -182,6 +182,7 @@ impl DaemonState {
         let settings_path = config.data_dir.join("settings.json");
         let workspaces = read_workspaces(&storage_path).unwrap_or_default();
         let app_settings = read_settings(&settings_path).unwrap_or_default();
+        settings_core::apply_default_codex_home_env(&app_settings, None);
         let daemon_mode = if config.orbit_url.is_some() {
             "orbit".to_string()
         } else {

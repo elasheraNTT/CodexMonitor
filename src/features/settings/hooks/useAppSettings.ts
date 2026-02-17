@@ -28,6 +28,7 @@ function buildDefaultSettings(): AppSettings {
   return {
     codexBin: null,
     codexArgs: null,
+    defaultCodexHome: null,
     backendMode: isMobile ? "remote" : "local",
     remoteBackendProvider: "tcp",
     remoteBackendHost: "127.0.0.1:4732",
@@ -130,6 +131,9 @@ function normalizeAppSettings(settings: AppSettings): AppSettings {
     ...settings,
     codexBin: settings.codexBin?.trim() ? settings.codexBin.trim() : null,
     codexArgs: settings.codexArgs?.trim() ? settings.codexArgs.trim() : null,
+    defaultCodexHome: settings.defaultCodexHome?.trim()
+      ? settings.defaultCodexHome.trim()
+      : null,
     uiScale: clampUiScale(settings.uiScale),
     theme: allowedThemes.has(settings.theme) ? settings.theme : "system",
     uiFontFamily: normalizeFontFamily(
