@@ -55,6 +55,7 @@ getAgentsSettingsMock.mockResolvedValue({
   configPath: "/Users/me/.codex/config.toml",
   multiAgentEnabled: false,
   maxThreads: 6,
+  maxDepth: 1,
   agents: [],
 });
 
@@ -116,8 +117,11 @@ const baseSettings: AppSettings = {
   preloadGitDiffs: true,
   gitDiffIgnoreWhitespaceChanges: false,
   commitMessagePrompt: DEFAULT_COMMIT_MESSAGE_PROMPT,
+  commitMessageModelId: null,
   collaborationModesEnabled: true,
   steerEnabled: true,
+  followUpMessageBehavior: "queue",
+  composerFollowUpHintEnabled: true,
   pauseQueuedMessagesWhenResponseRequired: true,
   unifiedExecEnabled: true,
   experimentalAppsEnabled: false,
@@ -202,7 +206,6 @@ const renderDisplaySection = (
     onDeleteWorkspaceGroup: vi.fn().mockResolvedValue(null),
     onAssignWorkspaceGroup: vi.fn().mockResolvedValue(null),
     onRunDoctor: vi.fn().mockResolvedValue(createDoctorResult()),
-    onUpdateWorkspaceCodexBin: vi.fn().mockResolvedValue(undefined),
     onUpdateWorkspaceSettings: vi.fn().mockResolvedValue(undefined),
     scaleShortcutTitle: "Scale shortcut",
     scaleShortcutText: "Use Command +/-",
@@ -218,6 +221,49 @@ const renderDisplaySection = (
   fireEvent.click(screen.getByRole("button", { name: "Display & Sound" }));
 
   return { onUpdateAppSettings, onToggleTransparency };
+};
+
+const renderComposerSection = (
+  options: {
+    appSettings?: Partial<AppSettings>;
+    onUpdateAppSettings?: ComponentProps<typeof SettingsView>["onUpdateAppSettings"];
+  } = {},
+) => {
+  cleanup();
+  const onUpdateAppSettings =
+    options.onUpdateAppSettings ?? vi.fn().mockResolvedValue(undefined);
+  const props: ComponentProps<typeof SettingsView> = {
+    reduceTransparency: false,
+    onToggleTransparency: vi.fn(),
+    appSettings: { ...baseSettings, ...options.appSettings },
+    openAppIconById: {},
+    onUpdateAppSettings,
+    workspaceGroups: [],
+    groupedWorkspaces: [],
+    ungroupedLabel: "Ungrouped",
+    onClose: vi.fn(),
+    onMoveWorkspace: vi.fn(),
+    onDeleteWorkspace: vi.fn(),
+    onCreateWorkspaceGroup: vi.fn().mockResolvedValue(null),
+    onRenameWorkspaceGroup: vi.fn().mockResolvedValue(null),
+    onMoveWorkspaceGroup: vi.fn().mockResolvedValue(null),
+    onDeleteWorkspaceGroup: vi.fn().mockResolvedValue(null),
+    onAssignWorkspaceGroup: vi.fn().mockResolvedValue(null),
+    onRunDoctor: vi.fn().mockResolvedValue(createDoctorResult()),
+    onUpdateWorkspaceSettings: vi.fn().mockResolvedValue(undefined),
+    scaleShortcutTitle: "Scale shortcut",
+    scaleShortcutText: "Use Command +/-",
+    onTestNotificationSound: vi.fn(),
+    onTestSystemNotification: vi.fn(),
+    dictationModelStatus: null,
+    onDownloadDictationModel: vi.fn(),
+    onCancelDictationDownload: vi.fn(),
+    onRemoveDictationModel: vi.fn(),
+    initialSection: "composer",
+  };
+
+  render(<SettingsView {...props} />);
+  return { onUpdateAppSettings };
 };
 
 const renderFeaturesSection = (
@@ -280,7 +326,6 @@ const renderFeaturesSection = (
     onDeleteWorkspaceGroup: vi.fn().mockResolvedValue(null),
     onAssignWorkspaceGroup: vi.fn().mockResolvedValue(null),
     onRunDoctor: vi.fn().mockResolvedValue(createDoctorResult()),
-    onUpdateWorkspaceCodexBin: vi.fn().mockResolvedValue(undefined),
     onUpdateWorkspaceSettings: vi.fn().mockResolvedValue(undefined),
     scaleShortcutTitle: "Scale shortcut",
     scaleShortcutText: "Use Command +/-",
@@ -307,7 +352,6 @@ const workspace = (
   name: overrides.name,
   path: overrides.path ?? `/tmp/${overrides.id}`,
   connected: overrides.connected ?? false,
-  codex_bin: overrides.codex_bin ?? null,
   kind: overrides.kind ?? "main",
   parentId: overrides.parentId ?? null,
   worktree: overrides.worktree ?? null,
@@ -316,8 +360,6 @@ const workspace = (
     sortOrder: null,
     groupId: null,
     gitRoot: null,
-    codexHome: null,
-    codexArgs: null,
     launchScript: null,
     launchScripts: null,
     worktreeSetupScript: null,
@@ -370,7 +412,6 @@ const renderEnvironmentsSection = (
     onDeleteWorkspaceGroup: vi.fn().mockResolvedValue(null),
     onAssignWorkspaceGroup: vi.fn().mockResolvedValue(null),
     onRunDoctor: vi.fn().mockResolvedValue(createDoctorResult()),
-    onUpdateWorkspaceCodexBin: vi.fn().mockResolvedValue(undefined),
     onUpdateWorkspaceSettings,
     scaleShortcutTitle: "Scale shortcut",
     scaleShortcutText: "Use Command +/-",
@@ -694,68 +735,7 @@ describe("SettingsView Environments", () => {
   });
 });
 
-describe("SettingsView Codex overrides", () => {
-  it("updates workspace Codex args override on blur", async () => {
-    const onUpdateWorkspaceSettings = vi.fn().mockResolvedValue(undefined);
-    const workspace: WorkspaceInfo = {
-      id: "w1",
-      name: "Workspace",
-      path: "/tmp/workspace",
-      connected: false,
-      codex_bin: null,
-      kind: "main",
-      parentId: null,
-      worktree: null,
-      settings: { sidebarCollapsed: false, codexArgs: null },
-    };
-
-    render(
-      <SettingsView
-        workspaceGroups={[]}
-        groupedWorkspaces={[
-          { id: null, name: "Ungrouped", workspaces: [workspace] },
-        ]}
-        ungroupedLabel="Ungrouped"
-        onClose={vi.fn()}
-        onMoveWorkspace={vi.fn()}
-        onDeleteWorkspace={vi.fn()}
-        onCreateWorkspaceGroup={vi.fn().mockResolvedValue(null)}
-        onRenameWorkspaceGroup={vi.fn().mockResolvedValue(null)}
-        onMoveWorkspaceGroup={vi.fn().mockResolvedValue(null)}
-        onDeleteWorkspaceGroup={vi.fn().mockResolvedValue(null)}
-        onAssignWorkspaceGroup={vi.fn().mockResolvedValue(null)}
-        reduceTransparency={false}
-        onToggleTransparency={vi.fn()}
-        appSettings={baseSettings}
-        openAppIconById={{}}
-        onUpdateAppSettings={vi.fn().mockResolvedValue(undefined)}
-        onRunDoctor={vi.fn().mockResolvedValue(createDoctorResult())}
-        onRunCodexUpdate={vi.fn().mockResolvedValue(createUpdateResult())}
-        onUpdateWorkspaceCodexBin={vi.fn().mockResolvedValue(undefined)}
-        onUpdateWorkspaceSettings={onUpdateWorkspaceSettings}
-        scaleShortcutTitle="Scale shortcut"
-        scaleShortcutText="Use Command +/-"
-        onTestNotificationSound={vi.fn()}
-        onTestSystemNotification={vi.fn()}
-        dictationModelStatus={null}
-        onDownloadDictationModel={vi.fn()}
-        onCancelDictationDownload={vi.fn()}
-        onRemoveDictationModel={vi.fn()}
-        initialSection="codex"
-      />,
-    );
-
-    const input = screen.getByLabelText("Codex args override for Workspace");
-    fireEvent.change(input, { target: { value: "--profile dev" } });
-    fireEvent.blur(input);
-
-    await waitFor(() => {
-      expect(onUpdateWorkspaceSettings).toHaveBeenCalledWith("w1", {
-        codexArgs: "--profile dev",
-      });
-    });
-  });
-
+describe("SettingsView Codex section", () => {
   it("updates review mode in codex section", async () => {
     cleanup();
     const onUpdateAppSettings = vi.fn().mockResolvedValue(undefined);
@@ -779,7 +759,6 @@ describe("SettingsView Codex overrides", () => {
         onUpdateAppSettings={onUpdateAppSettings}
         onRunDoctor={vi.fn().mockResolvedValue(createDoctorResult())}
         onRunCodexUpdate={vi.fn().mockResolvedValue(createUpdateResult())}
-        onUpdateWorkspaceCodexBin={vi.fn().mockResolvedValue(undefined)}
         onUpdateWorkspaceSettings={vi.fn().mockResolvedValue(undefined)}
         scaleShortcutTitle="Scale shortcut"
         scaleShortcutText="Use Command +/-"
@@ -829,7 +808,6 @@ describe("SettingsView Codex overrides", () => {
         openAppIconById={{}}
         onUpdateAppSettings={vi.fn().mockResolvedValue(undefined)}
         onRunDoctor={vi.fn().mockResolvedValue(createDoctorResult())}
-        onUpdateWorkspaceCodexBin={vi.fn().mockResolvedValue(undefined)}
         onUpdateWorkspaceSettings={vi.fn().mockResolvedValue(undefined)}
         scaleShortcutTitle="Scale shortcut"
         scaleShortcutText="Use Command +/-"
@@ -905,7 +883,6 @@ describe("SettingsView Codex overrides", () => {
           openAppIconById={{}}
           onUpdateAppSettings={vi.fn().mockResolvedValue(undefined)}
           onRunDoctor={vi.fn().mockResolvedValue(createDoctorResult())}
-          onUpdateWorkspaceCodexBin={vi.fn().mockResolvedValue(undefined)}
           onUpdateWorkspaceSettings={vi.fn().mockResolvedValue(undefined)}
           scaleShortcutTitle="Scale shortcut"
           scaleShortcutText="Use Command +/-"
@@ -1027,7 +1004,6 @@ describe("SettingsView Codex overrides", () => {
           openAppIconById={{}}
           onUpdateAppSettings={onUpdateAppSettings}
           onRunDoctor={vi.fn().mockResolvedValue(createDoctorResult())}
-          onUpdateWorkspaceCodexBin={vi.fn().mockResolvedValue(undefined)}
           onUpdateWorkspaceSettings={vi.fn().mockResolvedValue(undefined)}
           scaleShortcutTitle="Scale shortcut"
           scaleShortcutText="Use Command +/-"
@@ -1228,7 +1204,6 @@ describe("SettingsView Codex defaults", () => {
         onUpdateAppSettings={onUpdateAppSettings}
         onRunDoctor={vi.fn().mockResolvedValue(createDoctorResult())}
         onRunCodexUpdate={vi.fn().mockResolvedValue(createUpdateResult())}
-        onUpdateWorkspaceCodexBin={vi.fn().mockResolvedValue(undefined)}
         onUpdateWorkspaceSettings={vi.fn().mockResolvedValue(undefined)}
         scaleShortcutTitle="Scale shortcut"
         scaleShortcutText="Use Command +/-"
@@ -1326,7 +1301,6 @@ describe("SettingsView Codex defaults", () => {
         onUpdateAppSettings={onUpdateAppSettings}
         onRunDoctor={vi.fn().mockResolvedValue(createDoctorResult())}
         onRunCodexUpdate={vi.fn().mockResolvedValue(createUpdateResult())}
-        onUpdateWorkspaceCodexBin={vi.fn().mockResolvedValue(undefined)}
         onUpdateWorkspaceSettings={vi.fn().mockResolvedValue(undefined)}
         scaleShortcutTitle="Scale shortcut"
         scaleShortcutText="Use Command +/-"
@@ -1389,25 +1363,47 @@ describe("SettingsView Features", () => {
     });
   });
 
-  it("toggles steer mode in stable features", async () => {
-    const onUpdateAppSettings = vi.fn().mockResolvedValue(undefined);
+  it("hides steer mode dynamic feature row", async () => {
     renderFeaturesSection({
-      onUpdateAppSettings,
       appSettings: { steerEnabled: true },
     });
 
-    const steerTitle = await screen.findByText("Steer mode");
-    const steerRow = steerTitle.closest(".settings-toggle-row");
-    expect(steerRow).not.toBeNull();
+    await screen.findByText("Background terminal");
+    expect(screen.queryByText("Steer mode")).toBeNull();
+  });
 
-    const toggle = within(steerRow as HTMLElement).getByRole("button");
-    fireEvent.click(toggle);
-
-    await waitFor(() => {
-      expect(onUpdateAppSettings).toHaveBeenCalledWith(
-        expect.objectContaining({ steerEnabled: false }),
-      );
+  it("hides steer mode when returned as an experimental feature", async () => {
+    renderFeaturesSection({
+      appSettings: { steerEnabled: true },
+      experimentalFeaturesResponse: {
+        data: [
+          {
+            name: "steer",
+            stage: "underDevelopment",
+            enabled: true,
+            defaultEnabled: true,
+            displayName: "Steer mode",
+            description: "Legacy steer feature row.",
+            announcement: null,
+          },
+          {
+            name: "responses_websockets",
+            stage: "underDevelopment",
+            enabled: false,
+            defaultEnabled: false,
+            displayName: null,
+            description: null,
+            announcement: null,
+          },
+        ],
+        nextCursor: null,
+      },
     });
+
+    await screen.findByText(
+      "Use Responses API WebSocket transport for OpenAI by default.",
+    );
+    expect(screen.queryByText("Steer mode")).toBeNull();
   });
 
   it("toggles background terminal in stable features", async () => {
@@ -1452,6 +1448,72 @@ describe("SettingsView Features", () => {
     await screen.findByText(
       "Use Responses API WebSocket transport for OpenAI by default.",
     );
+  });
+});
+
+describe("SettingsView Composer", () => {
+  it("toggles follow-up hint visibility", async () => {
+    const onUpdateAppSettings = vi.fn().mockResolvedValue(undefined);
+    renderComposerSection({
+      onUpdateAppSettings,
+      appSettings: {
+        composerFollowUpHintEnabled: true,
+      },
+    });
+
+    const hintTitle = await screen.findByText("Show follow-up hint while processing");
+    const hintRow = hintTitle.closest(".settings-toggle-row");
+    expect(hintRow).not.toBeNull();
+    fireEvent.click(within(hintRow as HTMLElement).getByRole("button"));
+
+    await waitFor(() => {
+      expect(onUpdateAppSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ composerFollowUpHintEnabled: false }),
+      );
+    });
+  });
+
+  it("updates follow-up behavior from queue to steer", async () => {
+    const onUpdateAppSettings = vi.fn().mockResolvedValue(undefined);
+    renderComposerSection({
+      onUpdateAppSettings,
+      appSettings: {
+        steerEnabled: true,
+        followUpMessageBehavior: "queue",
+      },
+    });
+
+    fireEvent.click(screen.getByRole("radio", { name: "Steer" }));
+
+    await waitFor(() => {
+      expect(onUpdateAppSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ followUpMessageBehavior: "steer" }),
+      );
+    });
+  });
+
+  it("disables steer follow-up behavior when steer is unavailable", async () => {
+    const onUpdateAppSettings = vi.fn().mockResolvedValue(undefined);
+    renderComposerSection({
+      onUpdateAppSettings,
+      appSettings: {
+        steerEnabled: false,
+        followUpMessageBehavior: "queue",
+      },
+    });
+
+    const steerOption = screen.getByRole("radio", { name: "Steer" });
+    expect(steerOption.hasAttribute("disabled")).toBe(true);
+    expect(
+      screen.getByText(
+        "Steer is unavailable in the current Codex config. Follow-ups will queue.",
+      ),
+    ).not.toBeNull();
+
+    fireEvent.click(steerOption);
+    await waitFor(() => {
+      expect(onUpdateAppSettings).not.toHaveBeenCalled();
+    });
   });
 });
 
@@ -1520,7 +1582,6 @@ describe("SettingsView mobile layout", () => {
           openAppIconById={{}}
           onUpdateAppSettings={vi.fn().mockResolvedValue(undefined)}
           onRunDoctor={vi.fn().mockResolvedValue(createDoctorResult())}
-          onUpdateWorkspaceCodexBin={vi.fn().mockResolvedValue(undefined)}
           onUpdateWorkspaceSettings={vi.fn().mockResolvedValue(undefined)}
           scaleShortcutTitle="Scale shortcut"
           scaleShortcutText="Use Command +/-"
@@ -1624,7 +1685,6 @@ describe("SettingsView Shortcuts", () => {
         openAppIconById={{}}
         onUpdateAppSettings={vi.fn().mockResolvedValue(undefined)}
         onRunDoctor={vi.fn().mockResolvedValue(createDoctorResult())}
-        onUpdateWorkspaceCodexBin={vi.fn().mockResolvedValue(undefined)}
         onUpdateWorkspaceSettings={vi.fn().mockResolvedValue(undefined)}
         scaleShortcutTitle="Scale shortcut"
         scaleShortcutText="Use Command +/-"
@@ -1669,7 +1729,6 @@ describe("SettingsView Shortcuts", () => {
         openAppIconById={{}}
         onUpdateAppSettings={vi.fn().mockResolvedValue(undefined)}
         onRunDoctor={vi.fn().mockResolvedValue(createDoctorResult())}
-        onUpdateWorkspaceCodexBin={vi.fn().mockResolvedValue(undefined)}
         onUpdateWorkspaceSettings={vi.fn().mockResolvedValue(undefined)}
         scaleShortcutTitle="Scale shortcut"
         scaleShortcutText="Use Command +/-"
@@ -1712,7 +1771,6 @@ describe("SettingsView Shortcuts", () => {
         openAppIconById={{}}
         onUpdateAppSettings={vi.fn().mockResolvedValue(undefined)}
         onRunDoctor={vi.fn().mockResolvedValue(createDoctorResult())}
-        onUpdateWorkspaceCodexBin={vi.fn().mockResolvedValue(undefined)}
         onUpdateWorkspaceSettings={vi.fn().mockResolvedValue(undefined)}
         scaleShortcutTitle="Scale shortcut"
         scaleShortcutText="Use Command +/-"
@@ -1759,7 +1817,6 @@ describe("SettingsView Shortcuts", () => {
         openAppIconById={{}}
         onUpdateAppSettings={vi.fn().mockResolvedValue(undefined)}
         onRunDoctor={vi.fn().mockResolvedValue(createDoctorResult())}
-        onUpdateWorkspaceCodexBin={vi.fn().mockResolvedValue(undefined)}
         onUpdateWorkspaceSettings={vi.fn().mockResolvedValue(undefined)}
         scaleShortcutTitle="Scale shortcut"
         scaleShortcutText="Use Command +/-"

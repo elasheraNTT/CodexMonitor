@@ -11,6 +11,7 @@ import {
   resumeThread,
   sendUserMessage as sendUserMessageService,
   setThreadName,
+  startThread,
   startReview,
   steerTurn,
 } from "@services/tauri";
@@ -132,6 +133,289 @@ describe("useThreads UX integration", () => {
     if (assistantMerged?.kind === "message") {
       expect(assistantMerged.text).toBe("Hello world");
     }
+  });
+
+  it("applies runtime codex args before start and selection resume", async () => {
+    const ensureWorkspaceRuntimeCodexArgs = vi.fn(async () => undefined);
+    vi.mocked(startThread).mockResolvedValue({
+      result: { thread: { id: "thread-new" } },
+    } as Awaited<ReturnType<typeof startThread>>);
+    vi.mocked(resumeThread).mockResolvedValue({
+      result: {
+        thread: {
+          id: "thread-2",
+          preview: "Remote preview",
+          updated_at: 9999,
+          turns: [],
+        },
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useThreads({
+        activeWorkspace: workspace,
+        onWorkspaceConnected: vi.fn(),
+        ensureWorkspaceRuntimeCodexArgs,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.startThread();
+    });
+
+    expect(ensureWorkspaceRuntimeCodexArgs).toHaveBeenCalledWith("ws-1", null);
+    expect(vi.mocked(startThread)).toHaveBeenCalledWith("ws-1");
+    const startEnsureCallOrder = ensureWorkspaceRuntimeCodexArgs.mock.invocationCallOrder[0];
+    const startThreadCallOrder = vi.mocked(startThread).mock.invocationCallOrder[0];
+    expect(startEnsureCallOrder).toBeLessThan(startThreadCallOrder);
+
+    act(() => {
+      result.current.setActiveThreadId("thread-2");
+    });
+
+    await waitFor(() => {
+      expect(ensureWorkspaceRuntimeCodexArgs).toHaveBeenCalledWith("ws-1", "thread-2");
+      expect(vi.mocked(resumeThread)).toHaveBeenCalledWith("ws-1", "thread-2");
+    });
+
+    const selectEnsureCallOrder = ensureWorkspaceRuntimeCodexArgs.mock.invocationCallOrder[1];
+    const resumeThreadCallOrder = vi.mocked(resumeThread).mock.invocationCallOrder[0];
+    expect(selectEnsureCallOrder).toBeLessThan(resumeThreadCallOrder);
+  });
+
+  it("applies runtime codex args before direct startThreadForWorkspace calls", async () => {
+    const ensureWorkspaceRuntimeCodexArgs = vi.fn(async () => undefined);
+    vi.mocked(startThread).mockResolvedValue({
+      result: { thread: { id: "thread-direct-new" } },
+    } as Awaited<ReturnType<typeof startThread>>);
+
+    const { result } = renderHook(() =>
+      useThreads({
+        activeWorkspace: workspace,
+        onWorkspaceConnected: vi.fn(),
+        ensureWorkspaceRuntimeCodexArgs,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.startThreadForWorkspace("ws-1", { activate: false });
+    });
+
+    expect(ensureWorkspaceRuntimeCodexArgs).toHaveBeenCalledWith("ws-1", null);
+    expect(vi.mocked(startThread)).toHaveBeenCalledWith("ws-1");
+
+    const ensureCallOrder = ensureWorkspaceRuntimeCodexArgs.mock.invocationCallOrder[0];
+    const startThreadCallOrder = vi.mocked(startThread).mock.invocationCallOrder[0];
+    expect(ensureCallOrder).toBeLessThan(startThreadCallOrder);
+  });
+
+  it("still resumes selected thread when runtime codex args sync fails", async () => {
+    const ensureWorkspaceRuntimeCodexArgs = vi.fn(async () => {
+      throw new Error("runtime sync failed");
+    });
+    vi.mocked(resumeThread).mockResolvedValue({
+      result: {
+        thread: {
+          id: "thread-2",
+          preview: "Remote preview",
+          updated_at: 9999,
+          turns: [],
+        },
+      },
+    });
+
+    const { result } = renderHook(() =>
+      useThreads({
+        activeWorkspace: workspace,
+        onWorkspaceConnected: vi.fn(),
+        ensureWorkspaceRuntimeCodexArgs,
+      }),
+    );
+
+    act(() => {
+      result.current.setActiveThreadId("thread-2");
+    });
+
+    await waitFor(() => {
+      expect(ensureWorkspaceRuntimeCodexArgs).toHaveBeenCalledWith("ws-1", "thread-2");
+      expect(vi.mocked(resumeThread)).toHaveBeenCalledWith("ws-1", "thread-2");
+    });
+  });
+
+  it("does not preflight runtime codex args on selection while a workspace thread is processing", async () => {
+    const ensureWorkspaceRuntimeCodexArgs = vi.fn(async () => undefined);
+    vi.mocked(resumeThread).mockImplementation(async (_workspaceId, threadId) => ({
+      result: {
+        thread: {
+          id: threadId,
+          preview: `Thread ${threadId}`,
+          updated_at: 9999,
+          turns: [],
+        },
+      },
+    }));
+
+    const { result } = renderHook(() =>
+      useThreads({
+        activeWorkspace: workspace,
+        onWorkspaceConnected: vi.fn(),
+        ensureWorkspaceRuntimeCodexArgs,
+      }),
+    );
+
+    act(() => {
+      result.current.setActiveThreadId("thread-1");
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(resumeThread)).toHaveBeenCalledWith("ws-1", "thread-1");
+    });
+
+    vi.mocked(resumeThread).mockClear();
+    ensureWorkspaceRuntimeCodexArgs.mockClear();
+
+    act(() => {
+      handlers?.onTurnStarted?.("ws-1", "thread-1", "turn-1");
+    });
+
+    await waitFor(() => {
+      expect(result.current.threadStatusById["thread-1"]?.isProcessing).toBe(true);
+    });
+
+    act(() => {
+      result.current.setActiveThreadId("thread-2");
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(resumeThread)).toHaveBeenCalledWith("ws-1", "thread-2");
+    });
+
+    expect(ensureWorkspaceRuntimeCodexArgs).not.toHaveBeenCalled();
+  });
+
+  it("does not preflight runtime codex args on selection when a hidden thread is processing", async () => {
+    const ensureWorkspaceRuntimeCodexArgs = vi.fn(async () => undefined);
+    vi.mocked(resumeThread).mockImplementation(async (_workspaceId, threadId) => ({
+      result: {
+        thread: {
+          id: threadId,
+          preview: `Thread ${threadId}`,
+          updated_at: 9999,
+          turns: [],
+        },
+      },
+    }));
+
+    const { result } = renderHook(() =>
+      useThreads({
+        activeWorkspace: workspace,
+        onWorkspaceConnected: vi.fn(),
+        ensureWorkspaceRuntimeCodexArgs,
+      }),
+    );
+
+    act(() => {
+      handlers?.onTurnStarted?.("ws-1", "thread-hidden", "turn-hidden-1");
+      handlers?.onBackgroundThreadAction?.("ws-1", "thread-hidden", "hide");
+    });
+
+    await waitFor(() => {
+      expect(result.current.threadStatusById["thread-hidden"]?.isProcessing).toBe(true);
+    });
+
+    act(() => {
+      result.current.setActiveThreadId("thread-2");
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(resumeThread)).toHaveBeenCalledWith("ws-1", "thread-2");
+    });
+
+    expect(ensureWorkspaceRuntimeCodexArgs).not.toHaveBeenCalled();
+  });
+
+  it("does not preflight runtime codex args on send when another workspace thread is processing", async () => {
+    const ensureWorkspaceRuntimeCodexArgs = vi.fn(async () => undefined);
+    vi.mocked(resumeThread).mockImplementation(async (_workspaceId, threadId) => ({
+      result: {
+        thread: {
+          id: threadId,
+          preview: `Thread ${threadId}`,
+          updated_at: 9999,
+          turns: [],
+        },
+      },
+    }));
+    vi.mocked(sendUserMessageService).mockResolvedValue({
+      result: { turn: { id: "turn-target-1" } },
+    } as Awaited<ReturnType<typeof sendUserMessageService>>);
+
+    const { result } = renderHook(() =>
+      useThreads({
+        activeWorkspace: workspace,
+        onWorkspaceConnected: vi.fn(),
+        ensureWorkspaceRuntimeCodexArgs,
+      }),
+    );
+
+    act(() => {
+      result.current.setActiveThreadId("thread-busy");
+    });
+
+    await waitFor(() => {
+      expect(vi.mocked(resumeThread)).toHaveBeenCalledWith("ws-1", "thread-busy");
+    });
+
+    act(() => {
+      handlers?.onTurnStarted?.("ws-1", "thread-busy", "turn-busy-1");
+    });
+
+    await waitFor(() => {
+      expect(result.current.threadStatusById["thread-busy"]?.isProcessing).toBe(true);
+    });
+
+    ensureWorkspaceRuntimeCodexArgs.mockClear();
+
+    await act(async () => {
+      await result.current.sendUserMessageToThread(
+        workspace,
+        "thread-target",
+        "hello target",
+      );
+    });
+
+    expect(ensureWorkspaceRuntimeCodexArgs).not.toHaveBeenCalled();
+    const sendCalls = vi.mocked(sendUserMessageService).mock.calls;
+    const sendCall = sendCalls[sendCalls.length - 1];
+    expect(sendCall?.[0]).toBe("ws-1");
+    expect(sendCall?.[1]).toBe("thread-target");
+    expect(sendCall?.[2]).toBe("hello target");
+  });
+
+  it("still starts thread when runtime codex args sync fails", async () => {
+    const ensureWorkspaceRuntimeCodexArgs = vi.fn(async () => {
+      throw new Error("runtime sync failed");
+    });
+    vi.mocked(startThread).mockResolvedValue({
+      result: { thread: { id: "thread-new" } },
+    } as Awaited<ReturnType<typeof startThread>>);
+
+    const { result } = renderHook(() =>
+      useThreads({
+        activeWorkspace: workspace,
+        onWorkspaceConnected: vi.fn(),
+        ensureWorkspaceRuntimeCodexArgs,
+      }),
+    );
+
+    let threadId: string | null = null;
+    await act(async () => {
+      threadId = await result.current.startThread();
+    });
+
+    expect(ensureWorkspaceRuntimeCodexArgs).toHaveBeenCalledWith("ws-1", null);
+    expect(vi.mocked(startThread)).toHaveBeenCalledWith("ws-1");
+    expect(threadId).toBe("thread-new");
   });
 
   it("defers trimming until scrollback settings hydrate", async () => {
@@ -256,7 +540,7 @@ describe("useThreads UX integration", () => {
     );
   });
 
-  it("keeps local items when resume response does not overlap", async () => {
+  it("does not resume selected threads that already have local items", async () => {
     vi.mocked(resumeThread).mockResolvedValue({
       result: {
         thread: {
@@ -282,11 +566,13 @@ describe("useThreads UX integration", () => {
         },
       },
     });
+    const ensureWorkspaceRuntimeCodexArgs = vi.fn(async () => undefined);
 
     const { result } = renderHook(() =>
       useThreads({
         activeWorkspace: workspace,
         onWorkspaceConnected: vi.fn(),
+        ensureWorkspaceRuntimeCodexArgs,
       }),
     );
 
@@ -305,24 +591,24 @@ describe("useThreads UX integration", () => {
       result.current.setActiveThreadId("thread-3");
     });
 
-    await waitFor(() => {
-      expect(vi.mocked(resumeThread)).toHaveBeenCalledWith("ws-1", "thread-3");
+    await act(async () => {
+      await Promise.resolve();
     });
+    expect(vi.mocked(resumeThread)).not.toHaveBeenCalled();
+    expect(ensureWorkspaceRuntimeCodexArgs).not.toHaveBeenCalled();
 
-    await waitFor(() => {
-      const activeItems = result.current.activeItems;
-      const hasLocal = activeItems.some(
-        (item) =>
-          item.kind === "message" &&
-          item.role === "assistant" &&
-          item.id === "local-assistant-1",
-      );
-      const hasRemote = activeItems.some(
-        (item) => item.kind === "message" && item.id === "server-user-1",
-      );
-      expect(hasLocal).toBe(true);
-      expect(hasRemote).toBe(false);
-    });
+    const activeItems = result.current.activeItems;
+    const hasLocal = activeItems.some(
+      (item) =>
+        item.kind === "message" &&
+        item.role === "assistant" &&
+        item.id === "local-assistant-1",
+    );
+    const hasRemote = activeItems.some(
+      (item) => item.kind === "message" && item.id === "server-user-1",
+    );
+    expect(hasLocal).toBe(true);
+    expect(hasRemote).toBe(false);
   });
 
   it("clears empty plan updates to null", () => {
@@ -543,6 +829,7 @@ describe("useThreads UX integration", () => {
         isProcessing: status?.isProcessing ?? false,
         isReviewing: status?.isReviewing ?? false,
         steerEnabled: false,
+        followUpMessageBehavior: "queue",
         appsEnabled: true,
         activeWorkspace: workspace,
         connectWorkspace,
@@ -811,6 +1098,30 @@ describe("useThreads UX integration", () => {
     expect(result.current.isSubagentThread("ws-1", "thread-child-live")).toBe(true);
   });
 
+  it("classifies live spawned threads from top-level parent thread metadata", () => {
+    const { result } = renderHook(() =>
+      useThreads({
+        activeWorkspace: workspace,
+        onWorkspaceConnected: vi.fn(),
+      }),
+    );
+
+    act(() => {
+      handlers?.onThreadStarted?.("ws-1", {
+        id: "thread-child-live-flat-parent",
+        preview: "Child live flat parent",
+        parent_thread_id: "thread-parent-live-flat",
+      });
+    });
+
+    expect(result.current.threadParentById["thread-child-live-flat-parent"]).toBe(
+      "thread-parent-live-flat",
+    );
+    expect(result.current.isSubagentThread("ws-1", "thread-child-live-flat-parent")).toBe(
+      true,
+    );
+  });
+
   it("classifies live spawned threads from collab tool events", () => {
     const { result } = renderHook(() =>
       useThreads({
@@ -832,6 +1143,63 @@ describe("useThreads UX integration", () => {
       "thread-parent-live",
     );
     expect(result.current.isSubagentThread("ws-1", "thread-child-live-collab")).toBe(true);
+  });
+
+  it("classifies live spawned threads from spawn tool payloads with link hints", () => {
+    const { result } = renderHook(() =>
+      useThreads({
+        activeWorkspace: workspace,
+        onWorkspaceConnected: vi.fn(),
+      }),
+    );
+
+    act(() => {
+      handlers?.onItemCompleted?.("ws-1", "thread-parent-live", {
+        type: "mcpToolCall",
+        id: "item-spawn-link-hints",
+        tool: "spawn_agent",
+        sender_thread_id: "thread-parent-live",
+        new_thread_id: "thread-child-live-spawn-hint",
+      });
+    });
+
+    expect(result.current.threadParentById["thread-child-live-spawn-hint"]).toBe(
+      "thread-parent-live",
+    );
+    expect(result.current.isSubagentThread("ws-1", "thread-child-live-spawn-hint")).toBe(
+      true,
+    );
+  });
+
+  it("classifies collab receivers from receiver_agents metadata", () => {
+    const { result } = renderHook(() =>
+      useThreads({
+        activeWorkspace: workspace,
+        onWorkspaceConnected: vi.fn(),
+      }),
+    );
+
+    act(() => {
+      handlers?.onItemCompleted?.("ws-1", "thread-parent-live", {
+        type: "collabToolCall",
+        id: "item-collab-receiver-agents",
+        sender_thread_id: "thread-parent-live",
+        receiver_agents: [
+          {
+            thread_id: "thread-child-live-agent-ref",
+            agent_nickname: "Robie",
+            agent_role: "explorer",
+          },
+        ],
+      });
+    });
+
+    expect(result.current.threadParentById["thread-child-live-agent-ref"]).toBe(
+      "thread-parent-live",
+    );
+    expect(result.current.isSubagentThread("ws-1", "thread-child-live-agent-ref")).toBe(
+      true,
+    );
   });
 
   it("cascades archive to subagent descendants when parent archived", async () => {
@@ -1364,5 +1732,97 @@ describe("useThreads UX integration", () => {
       "thread-a",
     ]);
     expect(unpinnedRows.map((row) => row.thread.id)).toEqual(["thread-b"]);
+  });
+
+  it("keeps parent rows anchored when refresh only returns subagent children", async () => {
+    vi.mocked(listThreads)
+      .mockResolvedValueOnce({
+        result: {
+          data: [
+            {
+              id: "thread-parent-anchor",
+              preview: "Parent",
+              updated_at: 2000,
+              cwd: workspace.path,
+            },
+            {
+              id: "thread-child-anchor",
+              preview: "Child",
+              updated_at: 3000,
+              cwd: workspace.path,
+              source: {
+                subAgent: {
+                  thread_spawn: {
+                    parent_thread_id: "thread-parent-anchor",
+                    depth: 1,
+                  },
+                },
+              },
+            },
+          ],
+          nextCursor: null,
+        },
+      })
+      .mockResolvedValueOnce({
+        result: {
+          data: [
+            {
+              id: "thread-child-anchor",
+              preview: "Child",
+              updated_at: 3500,
+              cwd: workspace.path,
+              source: {
+                subAgent: {
+                  thread_spawn: {
+                    parent_thread_id: "thread-parent-anchor",
+                    depth: 1,
+                  },
+                },
+              },
+            },
+          ],
+          nextCursor: null,
+        },
+      });
+
+    const { result } = renderHook(() =>
+      useThreads({
+        activeWorkspace: workspace,
+        onWorkspaceConnected: vi.fn(),
+      }),
+    );
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace);
+    });
+
+    await waitFor(() => {
+      expect(result.current.threadParentById["thread-child-anchor"]).toBe(
+        "thread-parent-anchor",
+      );
+    });
+
+    await act(async () => {
+      await result.current.listThreadsForWorkspace(workspace);
+    });
+
+    expect(vi.mocked(listThreads)).toHaveBeenCalledTimes(2);
+    expect(result.current.threadsByWorkspace["ws-1"]?.map((thread) => thread.id)).toEqual(
+      ["thread-child-anchor", "thread-parent-anchor"],
+    );
+
+    const { result: threadRowsResult } = renderHook(() =>
+      useThreadRows(result.current.threadParentById),
+    );
+    const rows = threadRowsResult.current.getThreadRows(
+      result.current.threadsByWorkspace["ws-1"] ?? [],
+      true,
+      "ws-1",
+      () => null,
+    );
+    expect(rows.unpinnedRows.map((row) => [row.thread.id, row.depth])).toEqual([
+      ["thread-parent-anchor", 0],
+      ["thread-child-anchor", 1],
+    ]);
   });
 });

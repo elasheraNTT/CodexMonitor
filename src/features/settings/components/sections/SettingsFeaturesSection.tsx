@@ -1,4 +1,10 @@
 import type { CodexFeature } from "@/types";
+import {
+  SettingsSection,
+  SettingsSubsection,
+  SettingsToggleRow,
+  SettingsToggleSwitch,
+} from "@/features/design-system/components/settings/SettingsPrimitives";
 import type { SettingsFeaturesSectionProps } from "@settings/hooks/useSettingsFeaturesSection";
 import { fileManagerName, openInFileManagerLabel } from "@utils/platformPaths";
 
@@ -33,7 +39,7 @@ const FEATURE_DESCRIPTION_FALLBACKS: Record<string, string> = {
     "Allow prompting and installing missing MCP dependencies.",
   skill_env_var_dependency_prompt:
     "Prompt for missing skill environment variable dependencies.",
-  steer: "Enter submits immediately instead of queueing.",
+  steer: "Enable turn steering capability when supported by Codex.",
   collaboration_modes: "Enable collaboration mode presets.",
   personality: "Enable personality selection.",
   responses_websockets:
@@ -76,7 +82,6 @@ function featureSubtitle(feature: CodexFeature): string {
 export function SettingsFeaturesSection({
   appSettings,
   hasFeatureWorkspace,
-  hasCodexHomeOverrides,
   openConfigError,
   featureError,
   featuresLoading,
@@ -89,42 +94,32 @@ export function SettingsFeaturesSection({
   onUpdateAppSettings,
 }: SettingsFeaturesSectionProps) {
   return (
-    <section className="settings-section">
-      <div className="settings-section-title">Features</div>
-      <div className="settings-section-subtitle">
-        Manage stable and experimental Codex features.
-      </div>
-      {hasCodexHomeOverrides && (
-        <div className="settings-help">
-          Feature settings are stored in the default CODEX_HOME config.toml.
-          <br />
-          Workspace overrides are not updated.
-        </div>
-      )}
-      <div className="settings-toggle-row">
-        <div>
-          <div className="settings-toggle-title">Config file</div>
-          <div className="settings-toggle-subtitle">
-            Open the Codex config in {fileManagerName()}.
-          </div>
-        </div>
+    <SettingsSection
+      title="Features"
+      subtitle="Manage stable and experimental Codex features."
+    >
+      <SettingsToggleRow
+        title="Config file"
+        subtitle={`Open the Codex config in ${fileManagerName()}.`}
+      >
         <button type="button" className="ghost" onClick={onOpenConfig}>
           {openInFileManagerLabel()}
         </button>
-      </div>
+      </SettingsToggleRow>
       {openConfigError && <div className="settings-help">{openConfigError}</div>}
-      <div className="settings-subsection-title">Stable Features</div>
-      <div className="settings-subsection-subtitle">
-        Production-ready features enabled by default.
-      </div>
-      <div className="settings-toggle-row">
-        <div>
-          <div className="settings-toggle-title">Personality</div>
-          <div className="settings-toggle-subtitle">
+      <SettingsSubsection
+        title="Stable Features"
+        subtitle="Production-ready features enabled by default."
+      />
+      <SettingsToggleRow
+        title="Personality"
+        subtitle={
+          <>
             Choose Codex communication style (writes top-level <code>personality</code> in
             config.toml).
-          </div>
-        </div>
+          </>
+        }
+      >
         <select
           id="features-personality-select"
           className="settings-select"
@@ -140,20 +135,13 @@ export function SettingsFeaturesSection({
           <option value="friendly">Friendly</option>
           <option value="pragmatic">Pragmatic</option>
         </select>
-      </div>
-      <div className="settings-toggle-row">
-        <div>
-          <div className="settings-toggle-title">
-            Pause queued messages when a response is required
-          </div>
-          <div className="settings-toggle-subtitle">
-            Keep queued messages paused while Codex is waiting for plan accept/changes
-            or your answers.
-          </div>
-        </div>
-        <button
-          type="button"
-          className={`settings-toggle ${appSettings.pauseQueuedMessagesWhenResponseRequired ? "on" : ""}`}
+      </SettingsToggleRow>
+      <SettingsToggleRow
+        title="Pause queued messages when a response is required"
+        subtitle="Keep queued messages paused while Codex is waiting for plan accept/changes or your answers."
+      >
+        <SettingsToggleSwitch
+          pressed={appSettings.pauseQueuedMessagesWhenResponseRequired}
           onClick={() =>
             void onUpdateAppSettings({
               ...appSettings,
@@ -161,27 +149,20 @@ export function SettingsFeaturesSection({
                 !appSettings.pauseQueuedMessagesWhenResponseRequired,
             })
           }
-          aria-pressed={appSettings.pauseQueuedMessagesWhenResponseRequired}
-        >
-          <span className="settings-toggle-knob" />
-        </button>
-      </div>
+        />
+      </SettingsToggleRow>
       {stableFeatures.map((feature) => (
-        <div className="settings-toggle-row" key={feature.name}>
-          <div>
-            <div className="settings-toggle-title">{formatFeatureLabel(feature)}</div>
-            <div className="settings-toggle-subtitle">{featureSubtitle(feature)}</div>
-          </div>
-          <button
-            type="button"
-            className={`settings-toggle ${feature.enabled ? "on" : ""}`}
+        <SettingsToggleRow
+          key={feature.name}
+          title={formatFeatureLabel(feature)}
+          subtitle={featureSubtitle(feature)}
+        >
+          <SettingsToggleSwitch
+            pressed={feature.enabled}
             onClick={() => onToggleCodexFeature(feature)}
-            aria-pressed={feature.enabled}
             disabled={featureUpdatingKey === feature.name}
-          >
-            <span className="settings-toggle-knob" />
-          </button>
-        </div>
+          />
+        </SettingsToggleRow>
       ))}
       {hasFeatureWorkspace &&
         !featuresLoading &&
@@ -189,26 +170,22 @@ export function SettingsFeaturesSection({
         stableFeatures.length === 0 && (
         <div className="settings-help">No stable feature flags returned by Codex.</div>
       )}
-      <div className="settings-subsection-title">Experimental Features</div>
-      <div className="settings-subsection-subtitle">
-        Preview and under-development features.
-      </div>
+      <SettingsSubsection
+        title="Experimental Features"
+        subtitle="Preview and under-development features."
+      />
       {experimentalFeatures.map((feature) => (
-        <div className="settings-toggle-row" key={feature.name}>
-          <div>
-            <div className="settings-toggle-title">{formatFeatureLabel(feature)}</div>
-            <div className="settings-toggle-subtitle">{featureSubtitle(feature)}</div>
-          </div>
-          <button
-            type="button"
-            className={`settings-toggle ${feature.enabled ? "on" : ""}`}
+        <SettingsToggleRow
+          key={feature.name}
+          title={formatFeatureLabel(feature)}
+          subtitle={featureSubtitle(feature)}
+        >
+          <SettingsToggleSwitch
+            pressed={feature.enabled}
             onClick={() => onToggleCodexFeature(feature)}
-            aria-pressed={feature.enabled}
             disabled={featureUpdatingKey === feature.name}
-          >
-            <span className="settings-toggle-knob" />
-          </button>
-        </div>
+          />
+        </SettingsToggleRow>
       ))}
       {hasFeatureWorkspace &&
         !featuresLoading &&
@@ -228,6 +205,6 @@ export function SettingsFeaturesSection({
         </div>
       )}
       {featureError && <div className="settings-help">{featureError}</div>}
-    </section>
+    </SettingsSection>
   );
 }

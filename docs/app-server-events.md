@@ -1,4 +1,4 @@
-# App-Server Events Reference (Codex `227352257c9cfb0f509b01dc1a30057c874bb93f`)
+# App-Server Events Reference (Codex `9501669a2485969a78b8bdea3da4b3b2a626e0d3`)
 
 This document helps agents quickly answer:
 - Which app-server events CodexMonitor supports right now.
@@ -12,6 +12,9 @@ When updating this document:
 3. Compare Codex client request methods vs CodexMonitor outgoing request methods.
 4. Compare Codex server request methods vs CodexMonitor inbound request handling.
 5. Update supported and missing lists below.
+
+Related project skill:
+- `.codex/skills/app-server-events-sync/SKILL.md`
 
 ## Where To Look In CodexMonitor
 
@@ -62,6 +65,7 @@ routed in `useAppServerEvents.ts` or handled in feature-specific subscriptions.
 - `thread/started`
 - `thread/archived`
 - `thread/name/updated`
+- `thread/status/changed`
 - `thread/unarchived`
 - `codex/backgroundThread`
 - `error`
@@ -107,7 +111,6 @@ events are currently not routed:
 - `mcpServer/oauthLogin/completed`
 - `model/rerouted`
 - `thread/compacted` (deprecated; intentionally not routed)
-- `thread/status/changed`
 - `deprecationNotice`
 - `configWarning`
 - `windows/worldWritableWarning`
@@ -125,7 +128,7 @@ These are v2 request methods CodexMonitor currently sends to Codex app-server:
 - `thread/compact/start`
 - `thread/name/set`
 - `turn/start`
-- `turn/steer` (best-effort; falls back to `turn/start` when unsupported)
+- `turn/steer` (used for explicit steer follow-ups while a turn is active)
 - `turn/interrupt`
 - `review/start`
 - `model/list`
@@ -253,9 +256,9 @@ Use this when the method list is unchanged but behavior looks off.
   - Stored in `useThreadsReducer.ts` (`turnDiffByThread`)
   - Exposed by `useThreads.ts` for UI consumers
 - Steering behavior while a turn is processing:
-  - CodexMonitor attempts `turn/steer` when steering is enabled and an active turn exists.
-  - If the server/daemon reports unknown `turn/steer`/`turn_steer`, CodexMonitor
-    degrades to `turn/start` and caches that workspace as steer-unsupported.
+  - CodexMonitor attempts `turn/steer` only when steer capability is enabled, the thread is processing, and an active turn id exists.
+  - If `turn/steer` fails, CodexMonitor does not fall back to `turn/start`; it clears stale processing/turn state when applicable, surfaces an error, and returns `steer_failed`.
+  - Local queue fallback on `steer_failed` is handled in the composer queued-send flow (`useQueuedSend`), not by all direct `sendUserMessageToThread` callers.
 - Feature toggles in Settings:
   - `experimentalFeature/list` is an app-server request.
   - Toggle writes use local/daemon command surfaces (`set_codex_feature_flag` and app settings update),

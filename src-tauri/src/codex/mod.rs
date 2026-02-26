@@ -18,12 +18,7 @@ use crate::shared::codex_core;
 use crate::state::AppState;
 use crate::types::WorkspaceEntry;
 
-fn emit_thread_live_event(
-    app: &AppHandle,
-    workspace_id: &str,
-    method: &str,
-    params: Value,
-) {
+fn emit_thread_live_event(app: &AppHandle, workspace_id: &str, method: &str, params: Value) {
     let _ = app.emit(
         "app-server-event",
         AppServerEvent {
@@ -92,7 +87,7 @@ pub(crate) async fn start_thread(
         .await;
     }
 
-    codex_core::start_thread_core(&state.sessions, workspace_id).await
+    codex_core::start_thread_core(&state.sessions, &state.workspaces, workspace_id).await
 }
 
 #[tauri::command]
@@ -132,8 +127,12 @@ pub(crate) async fn thread_live_subscribe(
         .await;
     }
 
-    codex_core::thread_live_subscribe_core(&state.sessions, workspace_id.clone(), thread_id.clone())
-        .await?;
+    codex_core::thread_live_subscribe_core(
+        &state.sessions,
+        workspace_id.clone(),
+        thread_id.clone(),
+    )
+    .await?;
     let subscription_id = format!("{}:{}", workspace_id, thread_id);
     emit_thread_live_event(
         &app,
@@ -213,7 +212,6 @@ pub(crate) async fn list_threads(
     cursor: Option<String>,
     limit: Option<u32>,
     sort_key: Option<String>,
-    cwd: Option<String>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<Value, String> {
@@ -226,15 +224,13 @@ pub(crate) async fn list_threads(
                 "workspaceId": workspace_id,
                 "cursor": cursor,
                 "limit": limit,
-                "sortKey": sort_key,
-                "cwd": cwd
+                "sortKey": sort_key
             }),
         )
         .await;
     }
 
-    codex_core::list_threads_core(&state.sessions, workspace_id, cursor, limit, sort_key, cwd)
-        .await
+    codex_core::list_threads_core(&state.sessions, workspace_id, cursor, limit, sort_key).await
 }
 
 #[tauri::command]
@@ -365,6 +361,7 @@ pub(crate) async fn send_user_message(
 
     codex_core::send_user_message_core(
         &state.sessions,
+        &state.workspaces,
         workspace_id,
         thread_id,
         text,
@@ -565,8 +562,8 @@ pub(crate) async fn get_agents_settings(
     app: AppHandle,
 ) -> Result<agents_config_core::AgentsSettingsDto, String> {
     if remote_backend::is_remote_mode(&*state).await {
-        let response = remote_backend::call_remote(&*state, app, "get_agents_settings", json!({}))
-            .await?;
+        let response =
+            remote_backend::call_remote(&*state, app, "get_agents_settings", json!({})).await?;
         return serde_json::from_value(response).map_err(|err| err.to_string());
     }
 
@@ -600,13 +597,9 @@ pub(crate) async fn create_agent(
     app: AppHandle,
 ) -> Result<agents_config_core::AgentsSettingsDto, String> {
     if remote_backend::is_remote_mode(&*state).await {
-        let response = remote_backend::call_remote(
-            &*state,
-            app,
-            "create_agent",
-            json!({ "input": input }),
-        )
-        .await?;
+        let response =
+            remote_backend::call_remote(&*state, app, "create_agent", json!({ "input": input }))
+                .await?;
         return serde_json::from_value(response).map_err(|err| err.to_string());
     }
 
@@ -620,13 +613,9 @@ pub(crate) async fn update_agent(
     app: AppHandle,
 ) -> Result<agents_config_core::AgentsSettingsDto, String> {
     if remote_backend::is_remote_mode(&*state).await {
-        let response = remote_backend::call_remote(
-            &*state,
-            app,
-            "update_agent",
-            json!({ "input": input }),
-        )
-        .await?;
+        let response =
+            remote_backend::call_remote(&*state, app, "update_agent", json!({ "input": input }))
+                .await?;
         return serde_json::from_value(response).map_err(|err| err.to_string());
     }
 
@@ -640,13 +629,9 @@ pub(crate) async fn delete_agent(
     app: AppHandle,
 ) -> Result<agents_config_core::AgentsSettingsDto, String> {
     if remote_backend::is_remote_mode(&*state).await {
-        let response = remote_backend::call_remote(
-            &*state,
-            app,
-            "delete_agent",
-            json!({ "input": input }),
-        )
-        .await?;
+        let response =
+            remote_backend::call_remote(&*state, app, "delete_agent", json!({ "input": input }))
+                .await?;
         return serde_json::from_value(response).map_err(|err| err.to_string());
     }
 
@@ -790,7 +775,7 @@ pub(crate) async fn skills_list(
         .await;
     }
 
-    codex_core::skills_list_core(&state.sessions, workspace_id).await
+    codex_core::skills_list_core(&state.sessions, &state.workspaces, workspace_id).await
 }
 
 #[tauri::command]
@@ -875,6 +860,7 @@ pub(crate) async fn get_config_model(
 #[tauri::command]
 pub(crate) async fn generate_commit_message(
     workspace_id: String,
+    commit_message_model_id: Option<String>,
     state: State<'_, AppState>,
     app: AppHandle,
 ) -> Result<String, String> {
@@ -883,7 +869,10 @@ pub(crate) async fn generate_commit_message(
             &*state,
             app,
             "generate_commit_message",
-            json!({ "workspaceId": workspace_id }),
+            json!({
+                "workspaceId": workspace_id,
+                "commitMessageModelId": commit_message_model_id,
+            }),
         )
         .await?;
         return serde_json::from_value(value).map_err(|err| err.to_string());
@@ -897,9 +886,11 @@ pub(crate) async fn generate_commit_message(
     };
     crate::shared::codex_aux_core::generate_commit_message_core(
         &state.sessions,
+        &state.workspaces,
         workspace_id,
         &diff,
         &commit_message_prompt,
+        commit_message_model_id.as_deref(),
         |workspace_id, thread_id| {
             let _ = app.emit(
                 "app-server-event",
@@ -938,6 +929,7 @@ pub(crate) async fn generate_run_metadata(
 
     crate::shared::codex_aux_core::generate_run_metadata_core(
         &state.sessions,
+        &state.workspaces,
         workspace_id,
         &prompt,
         |workspace_id, thread_id| {
@@ -979,6 +971,7 @@ pub(crate) async fn generate_agent_description(
 
     crate::shared::codex_aux_core::generate_agent_description_core(
         &state.sessions,
+        &state.workspaces,
         workspace_id,
         &description,
         |workspace_id, thread_id| {
